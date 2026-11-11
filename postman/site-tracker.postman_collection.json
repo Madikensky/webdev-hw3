@@ -1,0 +1,2608 @@
+{
+  "info": {
+    "name": "Site-Tracker API",
+    "description": "REST API for telecom sites, their equipment and inspections (Express + TypeORM + PostgreSQL).\n\nRun the collection top to bottom (Collection Runner or `npm run test:api` in backend/): requests create their own data, keep ids in collection variables, and the last folder deletes everything again. Every request has tests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Liveness check. 200 with `database: \"up\"` when PostgreSQL is reachable, 503 otherwise."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"status is ok\", function () { pm.expect(pm.response.json().status).to.eql(\"ok\"); });",
+                  "pm.test(\"database is up\", function () { pm.expect(pm.response.json().database).to.eql(\"up\"); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Cities",
+      "item": [
+        {
+          "name": "Create city",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cities",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cities"
+              ]
+            },
+            "description": "Creates a city. `name` is required (1–100 chars) and unique (case-insensitive); `region` is optional. **201** + `Location` header.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test City {{suffix}}\",\n  \"region\": \"Test Region\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"suffix\", Math.random().toString(36).slice(2, 8));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () { pm.response.to.have.status(201); });",
+                  "pm.collectionVariables.set(\"cityId\", pm.response.json().id);",
+                  "pm.test(\"has Location header\", function () { pm.response.to.have.header(\"Location\"); });",
+                  "pm.test(\"siteCount is 0\", function () { pm.expect(pm.response.json().siteCount).to.eql(0); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create second city",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cities",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cities"
+              ]
+            },
+            "description": "A second city, used to test moving a site between cities.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Second City {{suffix}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () { pm.response.to.have.status(201); });",
+                  "pm.collectionVariables.set(\"cityId2\", pm.response.json().id);",
+                  "pm.test(\"region defaults to null\", function () { pm.expect(pm.response.json().region).to.be.null; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create city - duplicate name (409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cities",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cities"
+              ]
+            },
+            "description": "City names are unique regardless of case → **409**.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"TEST CITY {{suffix}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 409\", function () { pm.response.to.have.status(409); });",
+                  "pm.test(\"Error body has code and message\", function () {",
+                  "  const e = pm.response.json().error;",
+                  "  pm.expect(e.status).to.eql(409);",
+                  "  pm.expect(e.code).to.be.a(\"string\");",
+                  "  pm.expect(e.message).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create city - missing name (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cities",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cities"
+              ]
+            },
+            "description": "`name` is required → **400 VALIDATION_ERROR** with a `details` entry for the field.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"region\": \"No name\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () { pm.response.to.have.status(400); });",
+                  "pm.test(\"Error body has code and message\", function () {",
+                  "  const e = pm.response.json().error;",
+                  "  pm.expect(e.status).to.eql(400);",
+                  "  pm.expect(e.code).to.be.a(\"string\");",
+                  "  pm.expect(e.message).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"details mention name\", function () { pm.expect(pm.response.json().error.details.map(d => d.field)).to.include(\"name\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List cities",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/cities?page=1&limit=100&order=ASC",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cities"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": ""
+                },
+                {
+                  "key": "limit",
+                  "value": "100",
+                  "description": "max 100"
+                },
+                {
+                  "key": "order",
+                  "value": "ASC",
+                  "description": "ASC | DESC, sorted by name"
+                }
+              ]
+            },
+            "description": "Paginated list of cities, each with `siteCount`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Paginated response\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.data).to.be.an(\"array\");",
+                  "  pm.expect(b.meta).to.include.keys(\"page\", \"limit\", \"total\", \"totalPages\");",
+                  "});",
+                  "pm.test(\"contains our city\", function () { pm.expect(pm.response.json().data.map(c => c.id)).to.include(Number(pm.collectionVariables.get(\"cityId\"))); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get city by id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/cities/{{cityId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cities",
+                "{{cityId}}"
+              ]
+            },
+            "description": "Single city with `siteCount`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"correct id\", function () { pm.expect(pm.response.json().id).to.eql(Number(pm.collectionVariables.get(\"cityId\"))); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get city - not found (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/cities/999999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cities",
+                "999999"
+              ]
+            },
+            "description": "Unknown id → **404**."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 404\", function () { pm.response.to.have.status(404); });",
+                  "pm.test(\"Error body has code and message\", function () {",
+                  "  const e = pm.response.json().error;",
+                  "  pm.expect(e.status).to.eql(404);",
+                  "  pm.expect(e.code).to.be.a(\"string\");",
+                  "  pm.expect(e.message).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update city (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/cities/{{cityId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cities",
+                "{{cityId}}"
+              ]
+            },
+            "description": "Partial update. At least one of `name`, `region`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"region\": \"Updated Region\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"region updated\", function () { pm.expect(pm.response.json().region).to.eql(\"Updated Region\"); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Sites",
+      "item": [
+        {
+          "name": "List sites",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites?search=tower&status=active&sort=name&order=ASC&page=1&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites"
+              ],
+              "query": [
+                {
+                  "key": "search",
+                  "value": "tower",
+                  "description": "name or address contains (case-insensitive)"
+                },
+                {
+                  "key": "status",
+                  "value": "active",
+                  "description": "active | inactive | under_construction | decommissioned"
+                },
+                {
+                  "key": "sort",
+                  "value": "name",
+                  "description": "id | name | createdAt"
+                },
+                {
+                  "key": "order",
+                  "value": "ASC",
+                  "description": "ASC | DESC"
+                },
+                {
+                  "key": "page",
+                  "value": "1",
+                  "description": ""
+                },
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Paginated list of sites with their city and numbers (`equipmentCount`, `faultyEquipmentCount`, `inspectionCount`, `lastInspection`)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Paginated response\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.data).to.be.an(\"array\");",
+                  "  pm.expect(b.meta).to.include.keys(\"page\", \"limit\", \"total\", \"totalPages\");",
+                  "});",
+                  "pm.test(\"items have stats\", function () { pm.response.json().data.forEach(s => pm.expect(s).to.include.keys(\"equipmentCount\", \"inspectionCount\", \"lastInspection\"));  });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create site",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites"
+              ]
+            },
+            "description": "Creates a site. Required: `name`. Optional: `address`, `cityId` (must exist), `status` (default `active`). **201**.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Site {{suffix}}\",\n  \"address\": \"1 Test St\",\n  \"cityId\": {{cityId}},\n  \"status\": \"under_construction\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () { pm.response.to.have.status(201); });",
+                  "pm.collectionVariables.set(\"siteId\", pm.response.json().id);",
+                  "pm.test(\"city embedded, no equipment yet\", function () { const s = pm.response.json(); pm.expect(s.city.id).to.eql(Number(pm.collectionVariables.get(\"cityId\"))); pm.expect(s.equipmentCount).to.eql(0); pm.expect(s.lastInspection).to.be.null; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create site - missing name (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites"
+              ]
+            },
+            "description": "Missing `name` → **400**.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"address\": \"Nowhere\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () { pm.response.to.have.status(400); });",
+                  "pm.test(\"Error body has code and message\", function () {",
+                  "  const e = pm.response.json().error;",
+                  "  pm.expect(e.status).to.eql(400);",
+                  "  pm.expect(e.code).to.be.a(\"string\");",
+                  "  pm.expect(e.message).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create site - invalid status and unknown field (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites"
+              ]
+            },
+            "description": "Invalid `status` and an unknown field → **400** with a `details` entry per field.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Bad\",\n  \"status\": \"weird\",\n  \"colour\": \"red\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () { pm.response.to.have.status(400); });",
+                  "pm.test(\"Error body has code and message\", function () {",
+                  "  const e = pm.response.json().error;",
+                  "  pm.expect(e.status).to.eql(400);",
+                  "  pm.expect(e.code).to.be.a(\"string\");",
+                  "  pm.expect(e.message).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"both reported\", function () { const f = pm.response.json().error.details.map(d => d.field); pm.expect(f).to.include.members([\"status\", \"colour\"]); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create site - unknown city (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites"
+              ]
+            },
+            "description": "The body refers to a city that does not exist → **400**.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ghost\",\n  \"cityId\": 999999\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () { pm.response.to.have.status(400); });",
+                  "pm.test(\"Error body has code and message\", function () {",
+                  "  const e = pm.response.json().error;",
+                  "  pm.expect(e.status).to.eql(400);",
+                  "  pm.expect(e.code).to.be.a(\"string\");",
+                  "  pm.expect(e.message).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get site by id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites/{{siteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites",
+                "{{siteId}}"
+              ]
+            },
+            "description": "One site with `city`, `equipmentCount`, `faultyEquipmentCount`, `inspectionCount` and `lastInspection`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"correct id\", function () { pm.expect(pm.response.json().id).to.eql(Number(pm.collectionVariables.get(\"siteId\"))); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get site - not found (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites/999999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites",
+                "999999"
+              ]
+            },
+            "description": "Unknown id → **404**."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 404\", function () { pm.response.to.have.status(404); });",
+                  "pm.test(\"Error body has code and message\", function () {",
+                  "  const e = pm.response.json().error;",
+                  "  pm.expect(e.status).to.eql(404);",
+                  "  pm.expect(e.code).to.be.a(\"string\");",
+                  "  pm.expect(e.message).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get site - invalid id (400)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites/abc",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites",
+                "abc"
+              ]
+            },
+            "description": "Non-numeric id → **400**."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () { pm.response.to.have.status(400); });",
+                  "pm.test(\"Error body has code and message\", function () {",
+                  "  const e = pm.response.json().error;",
+                  "  pm.expect(e.status).to.eql(400);",
+                  "  pm.expect(e.code).to.be.a(\"string\");",
+                  "  pm.expect(e.message).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update site (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites/{{siteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites",
+                "{{siteId}}"
+              ]
+            },
+            "description": "Full replacement. Omitted optional fields are reset: `address` → null, `status` → `active`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Site {{suffix}} (renamed)\",\n  \"cityId\": {{cityId}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"reset to defaults\", function () { const s = pm.response.json(); pm.expect(s.name).to.include(\"renamed\"); pm.expect(s.address).to.be.null; pm.expect(s.status).to.eql(\"active\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update site (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites/{{siteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites",
+                "{{siteId}}"
+              ]
+            },
+            "description": "Partial update: only the fields you send change. Here the site also moves to another city.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"inactive\",\n  \"cityId\": {{cityId2}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"changed fields only\", function () { const s = pm.response.json(); pm.expect(s.status).to.eql(\"inactive\"); pm.expect(s.city.id).to.eql(Number(pm.collectionVariables.get(\"cityId2\"))); pm.expect(s.name).to.include(\"renamed\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update site (PATCH) - empty body (400)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites/{{siteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites",
+                "{{siteId}}"
+              ]
+            },
+            "description": "PATCH needs at least one field → **400**.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () { pm.response.to.have.status(400); });",
+                  "pm.test(\"Error body has code and message\", function () {",
+                  "  const e = pm.response.json().error;",
+                  "  pm.expect(e.status).to.eql(400);",
+                  "  pm.expect(e.code).to.be.a(\"string\");",
+                  "  pm.expect(e.message).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create second site (no city)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites"
+              ]
+            },
+            "description": "Only `name` is required. `address`/`cityId` are null and `status` is `active`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Second Site {{suffix}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () { pm.response.to.have.status(201); });",
+                  "pm.collectionVariables.set(\"siteId2\", pm.response.json().id);",
+                  "pm.test(\"defaults\", function () { const s = pm.response.json(); pm.expect(s.status).to.eql(\"active\"); pm.expect(s.city).to.be.null; pm.expect(s.cityId).to.be.null; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get sites of a city",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/cities/{{cityId2}}/sites?status=inactive",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cities",
+                "{{cityId2}}",
+                "sites"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "inactive",
+                  "description": "same filters as GET /api/sites except cityId"
+                }
+              ]
+            },
+            "description": "Sites in one city. **404** if the city does not exist."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Paginated response\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.data).to.be.an(\"array\");",
+                  "  pm.expect(b.meta).to.include.keys(\"page\", \"limit\", \"total\", \"totalPages\");",
+                  "});",
+                  "pm.test(\"contains our site\", function () { pm.expect(pm.response.json().data.map(s => s.id)).to.include(Number(pm.collectionVariables.get(\"siteId\"))); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Equipment",
+      "item": [
+        {
+          "name": "Create equipment for site",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites/{{siteId}}/equipment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites",
+                "{{siteId}}",
+                "equipment"
+              ]
+            },
+            "description": "Adds equipment to the site in the URL. Required: `type` (antenna | router | switch | power_unit | battery | other), `model`, `serialNumber` (unique). Optional: `status` (working | faulty | decommissioned, default `working`), `installedAt` (YYYY-MM-DD). **201**; **404** if the site is missing.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"antenna\",\n  \"model\": \"Test AAU\",\n  \"serialNumber\": \"SN-{{suffix}}-1\",\n  \"installedAt\": \"2026-10-01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () { pm.response.to.have.status(201); });",
+                  "pm.collectionVariables.set(\"equipmentId\", pm.response.json().id);",
+                  "pm.test(\"linked to site, default status\", function () { const e = pm.response.json(); pm.expect(e.site.id).to.eql(Number(pm.collectionVariables.get(\"siteId\"))); pm.expect(e.status).to.eql(\"working\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create equipment - duplicate serial (409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites/{{siteId}}/equipment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites",
+                "{{siteId}}",
+                "equipment"
+              ]
+            },
+            "description": "Serial numbers are unique → **409**.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"router\",\n  \"model\": \"Dup\",\n  \"serialNumber\": \"SN-{{suffix}}-1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 409\", function () { pm.response.to.have.status(409); });",
+                  "pm.test(\"Error body has code and message\", function () {",
+                  "  const e = pm.response.json().error;",
+                  "  pm.expect(e.status).to.eql(409);",
+                  "  pm.expect(e.code).to.be.a(\"string\");",
+                  "  pm.expect(e.message).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create equipment - invalid type and date (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites/{{siteId}}/equipment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites",
+                "{{siteId}}",
+                "equipment"
+              ]
+            },
+            "description": "Unknown `type` and a non-existent calendar day → **400**.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"toaster\",\n  \"model\": \"X\",\n  \"serialNumber\": \"SN-{{suffix}}-x\",\n  \"installedAt\": \"2026-02-30\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () { pm.response.to.have.status(400); });",
+                  "pm.test(\"Error body has code and message\", function () {",
+                  "  const e = pm.response.json().error;",
+                  "  pm.expect(e.status).to.eql(400);",
+                  "  pm.expect(e.code).to.be.a(\"string\");",
+                  "  pm.expect(e.message).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"both reported\", function () { const f = pm.response.json().error.details.map(d => d.field); pm.expect(f).to.include.members([\"type\", \"installedAt\"]); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create equipment - site not found (404)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites/999999/equipment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites",
+                "999999",
+                "equipment"
+              ]
+            },
+            "description": "The site in the URL does not exist → **404**.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"router\",\n  \"model\": \"X\",\n  \"serialNumber\": \"SN-{{suffix}}-y\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 404\", function () { pm.response.to.have.status(404); });",
+                  "pm.test(\"Error body has code and message\", function () {",
+                  "  const e = pm.response.json().error;",
+                  "  pm.expect(e.status).to.eql(404);",
+                  "  pm.expect(e.code).to.be.a(\"string\");",
+                  "  pm.expect(e.message).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create second equipment (faulty)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites/{{siteId}}/equipment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites",
+                "{{siteId}}",
+                "equipment"
+              ]
+            },
+            "description": "A faulty router, used for the counters on the site.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"router\",\n  \"model\": \"Test Router\",\n  \"serialNumber\": \"SN-{{suffix}}-2\",\n  \"status\": \"faulty\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () { pm.response.to.have.status(201); });",
+                  "pm.collectionVariables.set(\"equipmentId2\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Site shows equipment counters",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites/{{siteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites",
+                "{{siteId}}"
+              ]
+            },
+            "description": "The site now reports 2 pieces of equipment, 1 of them faulty."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"counters\", function () { const s = pm.response.json(); pm.expect(s.equipmentCount).to.eql(2); pm.expect(s.faultyEquipmentCount).to.eql(1); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List equipment",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/equipment?siteId={{siteId}}&type=router&status=faulty&search=test&sort=model&order=ASC",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "equipment"
+              ],
+              "query": [
+                {
+                  "key": "siteId",
+                  "value": "{{siteId}}",
+                  "description": "filter by site"
+                },
+                {
+                  "key": "type",
+                  "value": "router",
+                  "description": "antenna | router | switch | power_unit | battery | other"
+                },
+                {
+                  "key": "status",
+                  "value": "faulty",
+                  "description": "working | faulty | decommissioned"
+                },
+                {
+                  "key": "search",
+                  "value": "test",
+                  "description": "model or serial number contains"
+                },
+                {
+                  "key": "sort",
+                  "value": "model",
+                  "description": "id | model | installedAt | createdAt"
+                },
+                {
+                  "key": "order",
+                  "value": "ASC",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Paginated, filterable list of equipment (each with a short `site` summary)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Paginated response\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.data).to.be.an(\"array\");",
+                  "  pm.expect(b.meta).to.include.keys(\"page\", \"limit\", \"total\", \"totalPages\");",
+                  "});",
+                  "pm.test(\"finds the faulty router\", function () { pm.expect(pm.response.json().data.map(e => e.id)).to.include(Number(pm.collectionVariables.get(\"equipmentId2\"))); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get equipment by id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/equipment/{{equipmentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "equipment",
+                "{{equipmentId}}"
+              ]
+            },
+            "description": "One piece of equipment with `site: { id, name }`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"has site summary\", function () { pm.expect(pm.response.json().site).to.have.keys(\"id\", \"name\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get equipment - not found (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/equipment/999999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "equipment",
+                "999999"
+              ]
+            },
+            "description": "Unknown id → **404**."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 404\", function () { pm.response.to.have.status(404); });",
+                  "pm.test(\"Error body has code and message\", function () {",
+                  "  const e = pm.response.json().error;",
+                  "  pm.expect(e.status).to.eql(404);",
+                  "  pm.expect(e.code).to.be.a(\"string\");",
+                  "  pm.expect(e.message).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update equipment (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/equipment/{{equipmentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "equipment",
+                "{{equipmentId}}"
+              ]
+            },
+            "description": "Full replacement. Omitted `status` → `working`, omitted `installedAt` → null.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"antenna\",\n  \"model\": \"Test AAU v2\",\n  \"serialNumber\": \"SN-{{suffix}}-1\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"replaced\", function () { const e = pm.response.json(); pm.expect(e.model).to.eql(\"Test AAU v2\"); pm.expect(e.installedAt).to.be.null; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update equipment (PATCH) - status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/equipment/{{equipmentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "equipment",
+                "{{equipmentId}}"
+              ]
+            },
+            "description": "Partial update.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"faulty\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"status changed, model kept\", function () { const e = pm.response.json(); pm.expect(e.status).to.eql(\"faulty\"); pm.expect(e.model).to.eql(\"Test AAU v2\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Move equipment to another site (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/equipment/{{equipmentId2}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "equipment",
+                "{{equipmentId2}}"
+              ]
+            },
+            "description": "Sending `siteId` moves the equipment to another site (**400** if that site does not exist).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"siteId\": {{siteId2}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"now at the second site\", function () { pm.expect(pm.response.json().site.id).to.eql(Number(pm.collectionVariables.get(\"siteId2\"))); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Move equipment - unknown site (400)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/equipment/{{equipmentId2}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "equipment",
+                "{{equipmentId2}}"
+              ]
+            },
+            "description": "The target site is in the body, not the URL → **400**.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"siteId\": 999999\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () { pm.response.to.have.status(400); });",
+                  "pm.test(\"Error body has code and message\", function () {",
+                  "  const e = pm.response.json().error;",
+                  "  pm.expect(e.status).to.eql(400);",
+                  "  pm.expect(e.code).to.be.a(\"string\");",
+                  "  pm.expect(e.message).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get equipment of a site",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites/{{siteId}}/equipment?type=antenna&sort=model",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites",
+                "{{siteId}}",
+                "equipment"
+              ],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "antenna",
+                  "description": "same filters as GET /api/equipment except siteId"
+                },
+                {
+                  "key": "sort",
+                  "value": "model",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "Equipment of one site. **404** if the site does not exist."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Paginated response\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.data).to.be.an(\"array\");",
+                  "  pm.expect(b.meta).to.include.keys(\"page\", \"limit\", \"total\", \"totalPages\");",
+                  "});",
+                  "pm.test(\"one antenna left here\", function () { const b = pm.response.json(); pm.expect(b.meta.total).to.eql(1); pm.expect(b.data[0].id).to.eql(Number(pm.collectionVariables.get(\"equipmentId\"))); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Inspections",
+      "item": [
+        {
+          "name": "Create inspection for site",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites/{{siteId}}/inspections",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites",
+                "{{siteId}}",
+                "inspections"
+              ]
+            },
+            "description": "Records an inspection of the site in the URL. Required: `inspector`, `inspectedAt` (YYYY-MM-DD), `result` (passed | needs_attention | failed). Optional: `notes`. **201**; **404** if the site is missing.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"inspector\": \"Postman Bot\",\n  \"inspectedAt\": \"2026-11-05\",\n  \"result\": \"needs_attention\",\n  \"notes\": \"Antenna alignment is off.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () { pm.response.to.have.status(201); });",
+                  "pm.collectionVariables.set(\"inspectionId\", pm.response.json().id);",
+                  "pm.test(\"linked to site\", function () { pm.expect(pm.response.json().site.id).to.eql(Number(pm.collectionVariables.get(\"siteId\"))); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create inspection - invalid body (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites/{{siteId}}/inspections",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites",
+                "{{siteId}}",
+                "inspections"
+              ]
+            },
+            "description": "Empty inspector, wrong date format and unknown result → **400**.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"inspector\": \"\",\n  \"inspectedAt\": \"05.11.2026\",\n  \"result\": \"great\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () { pm.response.to.have.status(400); });",
+                  "pm.test(\"Error body has code and message\", function () {",
+                  "  const e = pm.response.json().error;",
+                  "  pm.expect(e.status).to.eql(400);",
+                  "  pm.expect(e.code).to.be.a(\"string\");",
+                  "  pm.expect(e.message).to.be.a(\"string\");",
+                  "});",
+                  "pm.test(\"three fields reported\", function () { const f = pm.response.json().error.details.map(d => d.field); pm.expect(f).to.include.members([\"inspector\", \"inspectedAt\", \"result\"]); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create inspection - site not found (404)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites/999999/inspections",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites",
+                "999999",
+                "inspections"
+              ]
+            },
+            "description": "The site in the URL does not exist → **404**.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"inspector\": \"Nobody\",\n  \"inspectedAt\": \"2026-11-05\",\n  \"result\": \"passed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 404\", function () { pm.response.to.have.status(404); });",
+                  "pm.test(\"Error body has code and message\", function () {",
+                  "  const e = pm.response.json().error;",
+                  "  pm.expect(e.status).to.eql(404);",
+                  "  pm.expect(e.code).to.be.a(\"string\");",
+                  "  pm.expect(e.message).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create second inspection (passed)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites/{{siteId}}/inspections",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites",
+                "{{siteId}}",
+                "inspections"
+              ]
+            },
+            "description": "A later inspection; it becomes the site's `lastInspection`.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"inspector\": \"Postman Bot\",\n  \"inspectedAt\": \"2026-11-10\",\n  \"result\": \"passed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () { pm.response.to.have.status(201); });",
+                  "pm.collectionVariables.set(\"inspectionId2\", pm.response.json().id);",
+                  "pm.test(\"notes default to null\", function () { pm.expect(pm.response.json().notes).to.be.null; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Site shows last inspection",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites/{{siteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites",
+                "{{siteId}}"
+              ]
+            },
+            "description": "`lastInspection` is the most recent one by date."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"last inspection\", function () { const s = pm.response.json(); pm.expect(s.inspectionCount).to.eql(2); pm.expect(s.lastInspection.id).to.eql(Number(pm.collectionVariables.get(\"inspectionId2\"))); pm.expect(s.lastInspection.result).to.eql(\"passed\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List inspections",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/inspections?siteId={{siteId}}&result=passed&from=2026-11-01&to=2026-11-30&sort=inspectedAt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "inspections"
+              ],
+              "query": [
+                {
+                  "key": "siteId",
+                  "value": "{{siteId}}",
+                  "description": "filter by site"
+                },
+                {
+                  "key": "result",
+                  "value": "passed",
+                  "description": "passed | needs_attention | failed"
+                },
+                {
+                  "key": "from",
+                  "value": "2026-11-01",
+                  "description": "inclusive, YYYY-MM-DD"
+                },
+                {
+                  "key": "to",
+                  "value": "2026-11-30",
+                  "description": "inclusive, YYYY-MM-DD"
+                },
+                {
+                  "key": "sort",
+                  "value": "inspectedAt",
+                  "description": "inspectedAt | id | createdAt (newest first by default)"
+                }
+              ]
+            },
+            "description": "Paginated, filterable list of inspections (newest first)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Paginated response\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.data).to.be.an(\"array\");",
+                  "  pm.expect(b.meta).to.include.keys(\"page\", \"limit\", \"total\", \"totalPages\");",
+                  "});",
+                  "pm.test(\"only the passed one\", function () { const b = pm.response.json(); pm.expect(b.meta.total).to.eql(1); pm.expect(b.data[0].id).to.eql(Number(pm.collectionVariables.get(\"inspectionId2\"))); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List inspections - bad date range (400)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/inspections?from=2026-12-01&to=2026-01-01",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "inspections"
+              ],
+              "query": [
+                {
+                  "key": "from",
+                  "value": "2026-12-01",
+                  "description": ""
+                },
+                {
+                  "key": "to",
+                  "value": "2026-01-01",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "`from` later than `to` → **400**."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () { pm.response.to.have.status(400); });",
+                  "pm.test(\"Error body has code and message\", function () {",
+                  "  const e = pm.response.json().error;",
+                  "  pm.expect(e.status).to.eql(400);",
+                  "  pm.expect(e.code).to.be.a(\"string\");",
+                  "  pm.expect(e.message).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get inspections of a site",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites/{{siteId}}/inspections",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites",
+                "{{siteId}}",
+                "inspections"
+              ]
+            },
+            "description": "Inspections of one site, newest first. **404** if the site does not exist."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Paginated response\", function () {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.data).to.be.an(\"array\");",
+                  "  pm.expect(b.meta).to.include.keys(\"page\", \"limit\", \"total\", \"totalPages\");",
+                  "});",
+                  "pm.test(\"two, newest first\", function () { const b = pm.response.json(); pm.expect(b.meta.total).to.eql(2); pm.expect(b.data[0].inspectedAt).to.eql(\"2026-11-10\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get inspection by id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/inspections/{{inspectionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "inspections",
+                "{{inspectionId}}"
+              ]
+            },
+            "description": "One inspection with `site: { id, name }`."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"date is a plain string\", function () { pm.expect(pm.response.json().inspectedAt).to.eql(\"2026-11-05\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Update inspection (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/inspections/{{inspectionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "inspections",
+                "{{inspectionId}}"
+              ]
+            },
+            "description": "Partial update.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"result\": \"failed\",\n  \"notes\": \"Re-checked: alignment still off.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"updated\", function () { const i = pm.response.json(); pm.expect(i.result).to.eql(\"failed\"); pm.expect(i.inspector).to.eql(\"Postman Bot\"); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Stats",
+      "item": [
+        {
+          "name": "Stats overview",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/stats/overview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "stats",
+                "overview"
+              ]
+            },
+            "description": "Numbers for a dashboard: sites by status (and how many need attention), equipment by status/type, inspections of the last 30 days by result, and sites per city."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"shape\", function () { const s = pm.response.json(); pm.expect(s.sites.total).to.be.a(\"number\"); pm.expect(s.sites.byStatus).to.have.keys(\"active\", \"inactive\", \"under_construction\", \"decommissioned\"); pm.expect(s.sites.needingAttention).to.be.a(\"number\"); pm.expect(s.equipment.byStatus).to.have.keys(\"working\", \"faulty\", \"decommissioned\"); pm.expect(s.inspectionsLast30Days).to.have.keys(\"passed\", \"needs_attention\", \"failed\"); pm.expect(s.sitesByCity).to.be.an(\"array\"); });",
+                  "pm.test(\"counts our faulty equipment\", function () { pm.expect(pm.response.json().equipment.byStatus.faulty).to.be.at.least(2); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Delete & cleanup",
+      "item": [
+        {
+          "name": "Delete city with sites - refused (409)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/cities/{{cityId2}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cities",
+                "{{cityId2}}"
+              ]
+            },
+            "description": "A city that still has sites cannot be deleted → **409**."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 409\", function () { pm.response.to.have.status(409); });",
+                  "pm.test(\"Error body has code and message\", function () {",
+                  "  const e = pm.response.json().error;",
+                  "  pm.expect(e.status).to.eql(409);",
+                  "  pm.expect(e.code).to.be.a(\"string\");",
+                  "  pm.expect(e.message).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete site with equipment/inspections - refused (409)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites/{{siteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites",
+                "{{siteId}}"
+              ]
+            },
+            "description": "A site that still has equipment or inspections needs `?force=true` → **409** without it."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 409\", function () { pm.response.to.have.status(409); });",
+                  "pm.test(\"Error body has code and message\", function () {",
+                  "  const e = pm.response.json().error;",
+                  "  pm.expect(e.status).to.eql(409);",
+                  "  pm.expect(e.code).to.be.a(\"string\");",
+                  "  pm.expect(e.message).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete site - invalid force value (400)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites/{{siteId}}?force=maybe",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites",
+                "{{siteId}}"
+              ],
+              "query": [
+                {
+                  "key": "force",
+                  "value": "maybe",
+                  "description": ""
+                }
+              ]
+            },
+            "description": "`force` must be `true` or `false` → **400**."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () { pm.response.to.have.status(400); });",
+                  "pm.test(\"Error body has code and message\", function () {",
+                  "  const e = pm.response.json().error;",
+                  "  pm.expect(e.status).to.eql(400);",
+                  "  pm.expect(e.code).to.be.a(\"string\");",
+                  "  pm.expect(e.message).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete inspection",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/inspections/{{inspectionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "inspections",
+                "{{inspectionId}}"
+              ]
+            },
+            "description": "Deletes an inspection → **204 No Content**."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 204\", function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete equipment",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/equipment/{{equipmentId2}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "equipment",
+                "{{equipmentId2}}"
+              ]
+            },
+            "description": "Deletes a piece of equipment → **204**."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 204\", function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete site",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites/{{siteId2}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites",
+                "{{siteId2}}"
+              ]
+            },
+            "description": "The second site has no equipment or inspections left → **204**."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 204\", function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete site (force)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites/{{siteId}}?force=true",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites",
+                "{{siteId}}"
+              ],
+              "query": [
+                {
+                  "key": "force",
+                  "value": "true",
+                  "description": "also deletes the site's equipment and inspections"
+                }
+              ]
+            },
+            "description": "With `force=true` the site and everything attached to it are deleted → **204**."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 204\", function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get deleted site (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/sites/{{siteId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sites",
+                "{{siteId}}"
+              ]
+            },
+            "description": "The site is gone."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 404\", function () { pm.response.to.have.status(404); });",
+                  "pm.test(\"Error body has code and message\", function () {",
+                  "  const e = pm.response.json().error;",
+                  "  pm.expect(e.status).to.eql(404);",
+                  "  pm.expect(e.code).to.be.a(\"string\");",
+                  "  pm.expect(e.message).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get cascade-deleted equipment (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/equipment/{{equipmentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "equipment",
+                "{{equipmentId}}"
+              ]
+            },
+            "description": "Equipment of the force-deleted site was deleted with it."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 404\", function () { pm.response.to.have.status(404); });",
+                  "pm.test(\"Error body has code and message\", function () {",
+                  "  const e = pm.response.json().error;",
+                  "  pm.expect(e.status).to.eql(404);",
+                  "  pm.expect(e.code).to.be.a(\"string\");",
+                  "  pm.expect(e.message).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete city",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/cities/{{cityId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cities",
+                "{{cityId}}"
+              ]
+            },
+            "description": "City is empty → **204**."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 204\", function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete second city",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/cities/{{cityId2}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "cities",
+                "{{cityId2}}"
+              ]
+            },
+            "description": "Its only site is gone → **204**."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 204\", function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown route (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/towers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "towers"
+              ]
+            },
+            "description": "Undefined routes return a JSON **404**."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status code is 404\", function () { pm.response.to.have.status(404); });",
+                  "pm.test(\"Error body has code and message\", function () {",
+                  "  const e = pm.response.json().error;",
+                  "  pm.expect(e.status).to.eql(404);",
+                  "  pm.expect(e.code).to.be.a(\"string\");",
+                  "  pm.expect(e.message).to.be.a(\"string\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "suffix",
+      "value": ""
+    },
+    {
+      "key": "cityId",
+      "value": ""
+    },
+    {
+      "key": "cityId2",
+      "value": ""
+    },
+    {
+      "key": "siteId",
+      "value": ""
+    },
+    {
+      "key": "siteId2",
+      "value": ""
+    },
+    {
+      "key": "equipmentId",
+      "value": ""
+    },
+    {
+      "key": "equipmentId2",
+      "value": ""
+    },
+    {
+      "key": "inspectionId",
+      "value": ""
+    },
+    {
+      "key": "inspectionId2",
+      "value": ""
+    }
+  ]
+}
